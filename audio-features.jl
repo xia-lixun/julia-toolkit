@@ -176,9 +176,11 @@ function filter_banks(T, rate::U, nfft::U; filt_num=26, fl=0, fh=div(rate,2)) wh
 end
 
 
-function filter_bank_energy(x::Array{T,1}, p::Frame1D{U}, nfft::U; window=ones, zero_init=false, zero_append=false, filt_num=26, fl=0, fh=div(p.rate,2)) where {T <: AbstractFloat, U <: Integer}
+function filter_bank_energy(x::Array{T,1}, p::Frame1D{U}, nfft::U; window=ones, zero_init=false, zero_append=false, filt_num=26, fl=0, fh=div(p.rate,2), use_log=false) where {T <: AbstractFloat, U <: Integer}
 
     ℙ = power_spectrum(x, p, nfft, window=window, zero_init=zero_init, zero_append=zero_append)
     𝔽 = filter_banks(T, p.rate, nfft, filt_num=filt_num, fl=fl, fh=fh)
     ℙ = 𝔽 * ℙ
+    use_log && (log.(ℙ))
+    ℙ
 end
