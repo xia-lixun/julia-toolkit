@@ -9,15 +9,16 @@ include("./audio-features.jl")
 
 
 
-function decode_to_linear_pcm(file <: AbstractString, encoders)
-# file is w/ root folder    
+function decode_to_linear_pcm(file::AbstractString, encoders, dst)
+# file is w/ root folder
+# dst = "/tmp/a.wav"
     ext = lowercase(file[end - 3:end])
-    dst = "/tmp/a.wav"
-
     if ext == ".wav"
         run(`cp $file $dst`)
     elseif in(ext, encoders) 
         run(`ffmpeg -i $file $dst -y`)
+    else
+        error("encoder type not supported: $ext")
     end
     nothing
 end
@@ -42,6 +43,11 @@ function process_data()
     path_root = "/home/lixun/Downloads/UrbanSound8K-SmallSet/"
     path_branch = "audio/fold"
 
+    path_pcm1 = "/tmp/a.wav"
+    path_pcm2 = "/tmp/b.wav"
+
+    frame_duration = 0.025
+    frame_step_duration = 0.01
     test_fold = 7
     target_fs = 16000
     target_bits = 16
@@ -60,8 +66,8 @@ function process_data()
 
             for j in files
 
-                decode_to_linear_pcm( joinpath(root, j) )
-                run(`sox /tmp/a.wav -r $target_fs -b $target_bits /tmp/b.wav`)
+                decode_to_linear_pcm( joinpath(root, j), encoders, path_pcm1 )
+                run(`sox $path_pcm1 -r $target_fs -b $target_bits $path_pcm2`)
                 
                 id = split(j[1:end - length(".wav")], "-")
                 # id[1] : freesound id
@@ -69,21 +75,35 @@ function process_data()
                 # id[3] : occurrence id
                 # id[4] : slice id
                 
-                x, fs = wavread("/tmp/b.wav")
+                # convert multichannel to mono and normalize to unit variance
+                x, fs = wavread(path_pcm2)
                 assert(Int64(fs) == Int64(target_fs))
-                x = stand(x[:, 1])
-                    
-                p = Frame1D{Int64}(target_fs, floor(0.025 * fs), floor(0.01 * fs), 0)
+                x = mean(x,2)
+                
+                #channel = findmax(std(x,1))[2]
+                x = stand(x[:,1])
+                
+                # extend normalized time series to uniform length
+                #if length(x) > target_clip_samples
+                #    x = x[1:target_clip_samples]
+                #elseif length(x) < target_clip_samples
+                #    x = [x; zeros(typeof(x[1]), target_clip_samples-length(x))]
+                #end
+
+                #extract spectral features
+                p = Frame1D{Int64}(target_fs, floor(frame_duration * fs), floor(frame_step_duration * fs), 0)
                 fbe = filter_bank_energy(x, p, 512, zero_append=true, fl=100, fh=6800, use_log=true)
                 #writetable("/tmp/c.csv",DataFrame(fbe), header=false)
-                            
+                
                 if i == test_fold
-                    dstp = joinpath(data_test, "$(j[1:end-length(".wav")]).h5")
+                    dstp = joinpath(path_test, "$(j[1:end-length(".wav")]).h5")
                 else
-                    dstp = joinpath(data_train, "$(j[1:end-length(".wav")]).h5")
+                    dstp = joinpath(path_train, "$(j[1:end-length(".wav")]).h5")
                 end
-                h5write(dstp, "id_class", parse(Int64, id[2], 10))
-                h5write(dstp, "features", fbe)
+                h5write(dstp, "class_id", parse(Int64, id[2], 10))
+                h5write(dstp, "audio", fbe)
+                h5write(dstp, "sr", target_fs)
+                info("$j processed")
             end
         end
 

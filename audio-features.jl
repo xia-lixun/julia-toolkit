@@ -181,6 +181,6 @@ function filter_bank_energy(x::Array{T,1}, p::Frame1D{U}, nfft::U; window=ones, 
     ℙ = power_spectrum(x, p, nfft, window=window, zero_init=zero_init, zero_append=zero_append)
     𝔽 = filter_banks(T, p.rate, nfft, filt_num=filt_num, fl=fl, fh=fh)
     ℙ = 𝔽 * ℙ
-    use_log && (log.(ℙ))
+    use_log && (log.(ℙ + eps()))
     ℙ
 end
