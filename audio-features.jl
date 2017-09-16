@@ -15,6 +15,16 @@ function hamming(T, n)
     ω
 end
 
+function hann(T, n)
+    ω = Array{T,1}(n)
+    α = T(0.5)
+    β = 1 - α
+    for i = 0:n-1
+        ω[i+1] = α - β * T(cos(2π * i / (n-1)))
+    end
+    ω
+end
+
 
 
 
