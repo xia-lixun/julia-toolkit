@@ -48,7 +48,7 @@ end
 
 
 
-
+# this is a private member function
 function tile(x::Array{T,1}, p::Frame1D{U}; zero_init=false, zero_append=false) where {T <: AbstractFloat, U <: Integer}
     
     zero_init && (x = [zeros(T, p.overlap); x])                                     # zero padding to the front for defined init state
@@ -193,4 +193,16 @@ function filter_bank_energy(x::Array{T,1}, p::Frame1D{U}, nfft::U; window=ones, 
     ℙ = 𝔽 * ℙ
     use_log && (log.(ℙ))
     ℙ
+end
+
+
+
+# T could be AbstractFloat for best performance
+# but defined as Real for completeness.
+function local_maxima(x::Array{T,1}) where {T <: Real}
+    
+    gtl = [false; x[2:end] .> x[1:end-1]]
+    gtu = [x[1:end-1] .>= x[2:end]; false]
+    imax = gtl .& gtu
+    # return as BitArray mask of true or false
 end
