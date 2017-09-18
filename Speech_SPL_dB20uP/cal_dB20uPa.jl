@@ -11,8 +11,8 @@ struct Source{T <: AbstractFloat, U <: Integer}
     path::AbstractString
     use_file_size::Bool
     start::T
-    finish::T
-    Source{T,U}(x,y,s,p,q) where {T <: AbstractFloat, U <: Integer} = p >= q ? error("start time must be less than finishing time") : new(x,y,s,p,q)
+    stop::T
+    Source{T,U}(x,y,s,p,q) where {T <: AbstractFloat, U <: Integer} = p >= q ? error("start time must be less than stop time") : new(x,y,s,p,q)
 end
 
 
@@ -34,10 +34,10 @@ function extract_clip_and_merge(recording::AbstractString, repeats::U, ρ::Sourc
 
     # if there is any boundary definitions
     if ρ.use_file_size == false
-        t0 = 1 + U(floor(ρ.rate * ρ.start))
-        t1 = U(floor(ρ.rate * ρ.finish))
-        s = s[t0:t1]
-        assert(size(s,1) >= U(floor(ρ.rate * ρ.finish)))        
+        assert(size(s,1) >= U(floor(ρ.rate * ρ.stop)))
+        t0 = 1 + U(floor(ρ.rate * ρ.start)) 
+        t1 = U(floor(ρ.rate * ρ.stop))
+        s = s[t0:t1]        
     end
     m = length(s)
 
@@ -108,15 +108,15 @@ end
 
 
 
-
-function cal_(recording::AbstractString, repeats)
+# symbol = "sine_1019_3s1.wav"
+function cal_46an(recording::AbstractString, symbol::AbstractString, repeats; use_symbol_size=true, start=0.25, stop=10.45)
     
     #recording = "Vol70-CotRcvEq-AplayBPF-46AN.wav"
 
     p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
     #ρ = Source{Float64, Int64}(48000, "PreparationRCV.wav", 0.25, 10.45)
-    #ρ = Source{Float64, Int64}(48000, "PreparationRCV_100_8000_BPF.wav", 0.25, 10.425)
-    ρ = Source{Float64, Int64}(48000, "sine_1019_3s1.wav", true, 0.25, 10.45)
+    #ρ = Source{Float64, Int64}(48000, "PreparationRCV_100_8000_BPF.wav", 0.25, 10.45)
+    ρ = Source{Float64, Int64}(48000, symbol, use_symbol_size, start, stop)
     dBSPL = cal_dB20uPa("1000hz-piston-114dBSPL-46AN.wav", p, recording, repeats, ρ)
     println("SPL = $dBSPL dB")       
 end
