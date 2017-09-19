@@ -57,25 +57,25 @@ function extract_clip_and_merge(recording::AbstractString, repeats::U, ρ::Sourc
     rb = lb + m - 1
     y[1:m] = r[lb:rb]
     ip = 1
-
-    for i = 2:length(𝓡)
-
-        ploc = find(x->x==𝓡[i],ℝ)[1]
-        if sum(abs.(peaks[1:ip] - ploc) .> m) == ip
-            ip += 1
-            peaks[ip] = ploc
-            info("peak anchor-[$ip] in correlation: $ploc")
-            lb = n - ploc + 1
-            rb = lb + m - 1
-            #display(plot(r[lb:rb]))
-            y[1+(ip-1)*m : ip*m] = r[lb:rb]
-            if ip == repeats
-                break
+    if repeats > 1
+        for i = 2:length(𝓡)
+            ploc = find(x->x==𝓡[i],ℝ)[1]
+            if sum(abs.(peaks[1:ip] - ploc) .> m) == ip
+                ip += 1
+                peaks[ip] = ploc
+                info("peak anchor-[$ip] in correlation: $ploc")
+                lb = n - ploc + 1
+                rb = lb + m - 1
+                #display(plot(r[lb:rb]))
+                y[1+(ip-1)*m : ip*m] = r[lb:rb]
+                if ip == repeats
+                    break
+                end
             end
         end
+        peaks = sort(peaks)
+        info("diff of peak locations: $(diff(peaks)./ρ.rate) seconds")
     end
-    peaks = sort(peaks)
-    info("diff of peak locations: $(diff(peaks)./ρ.rate) seconds")
     #display(plot(y))
     y
 end
@@ -107,16 +107,18 @@ end
 
 
 
-
-# symbol = "sine_1019_3s1.wav"
-function cal_46an(recording::AbstractString, symbol::AbstractString, repeats; use_symbol_size=true, start=0.25, stop=10.45)
+function dBSPL_46AN(recording::AbstractString, symbol::AbstractString, repeats; use_symbol_size=true, start=0.25, stop=10.45)
     
-    #recording = "Vol70-CotRcvEq-AplayBPF-46AN.wav"
-
     p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
-    #ρ = Source{Float64, Int64}(48000, "PreparationRCV.wav", 0.25, 10.45)
-    #ρ = Source{Float64, Int64}(48000, "PreparationRCV_100_8000_BPF.wav", 0.25, 10.45)
     ρ = Source{Float64, Int64}(48000, symbol, use_symbol_size, start, stop)
     dBSPL = cal_dB20uPa("1000hz-piston-114dBSPL-46AN.wav", p, recording, repeats, ρ)
+    println("SPL = $dBSPL dB")       
+end
+
+function dBSPL_40AN(recording::AbstractString, symbol::AbstractString, repeats; use_symbol_size=true, start=0.25, stop=10.45)
+    
+    p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
+    ρ = Source{Float64, Int64}(48000, symbol, use_symbol_size, start, stop)
+    dBSPL = cal_dB20uPa("1000hz-piston-114dBSPL-40AN.wav", p, recording, repeats, ρ)
     println("SPL = $dBSPL dB")       
 end
