@@ -104,6 +104,36 @@ function cal_dB20uPa( calib_recording::AbstractString, p::Frame1D{U}, recording:
     return 10*log10(sum_kbn(xp[fl:fh])) + (piston_dbspl - offset)
 end
 
+function cal_dB20uPa( calib_recording::AbstractString, p::Frame1D{U}, recording::AbstractString; tl = 5, tr = 15, fl = 100, fh = 12000, piston_dbspl = 114.0) where {U <: Integer}
+    
+        # extracting calibration recording and measurement recording
+        r, fs = wavread(calib_recording)
+        assert(U(fs) == p.rate)
+        rp = power_spectrum(r[:,1], p, p.block, window=hann)
+        rp = mean(rp, 2)
+    
+        x, fs = wavread(recording)
+        assert(U(fs) == p.rate)
+        channels = size(x,2)
+        dBSPL = zeros(typeof(x[1,1]), channels)
+
+        start = 1+U(floor(tl * p.rate))
+        stop = U(floor(tr * p.rate))
+
+        for c = 1:channels
+            xp = power_spectrum(x[start:stop,c], p, p.block, window=hann)
+            xp = mean(xp, 2)
+            fl = U(floor(fl/p.rate * p.block))
+            fh = U(floor(fh/p.rate * p.block))
+            offset = 10*log10(sum_kbn(rp[fl:fh]))
+            dBSPL[c] = 10*log10(sum_kbn(xp[fl:fh])) + (piston_dbspl - offset)    
+        end
+        dBSPL 
+    end
+
+
+
+
 
 
 
@@ -120,5 +150,12 @@ function dBSPL_40AN(recording::AbstractString, symbol::AbstractString, repeats; 
     p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
     ρ = Source{Float64, Int64}(48000, symbol, use_symbol_size, start, stop)
     dBSPL = cal_dB20uPa("1000hz-piston-114dBSPL-40AN.wav", p, recording, repeats, ρ)
+    println("SPL = $dBSPL dB")       
+end
+
+function dBSPL_46AN(recording::AbstractString; start=5, stop=15)
+    
+    p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
+    dBSPL = cal_dB20uPa("1000hz-piston-114dBSPL-46AN.wav", p, recording, tl = start, tr = stop)
     println("SPL = $dBSPL dB")       
 end
