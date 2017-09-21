@@ -10,14 +10,14 @@ function extract_symbol_and_merge(x::Array{T,1}, s::Array{T,1}, rep::U) where {T
     
     n = length(x) 
     m = length(s)
-    
+    y = zeros(T, rep * m)
+    peaks = zeros(Int64, rep)
+
     ℝ = xcorr(s, x)                                
     #display(plot(ℝ))
     𝓡 = sort(ℝ[local_maxima(ℝ)], rev = true)
-    isempty(𝓡) && ( error("no local maxima found!") )
+    isempty(𝓡) && ( return (y, diff(peaks)) )
 
-    y = zeros(T, rep * m)
-    peaks = zeros(Int64, rep)
 
     # find the anchor point
     ploc = find(z->z==𝓡[1],ℝ)[1]
@@ -53,38 +53,23 @@ end
 
 
   
-function cal_dB20uPa( 
-    
-    piston_recording::AbstractString,
-    unknown_recording::AbstractString,
-    symbol::AbstractString,
-    repeat::U, 
-    symbol_l,
-    symbol_h,
-    p::Frame1D{U}; 
-    
+function cal_dB20uPa( r::Array{T,1}, x::Array{T,2}, s::Array{T,1}, repeat::U, symbol_l, symbol_h, p::Frame1D{U}; 
+
     fl = 100, 
     fh = 12000, 
     piston_dbspl = 114.0
-    
-    ) where {U <: Integer}
 
-    # extracting calibration recording and measurement recording
-    r, fs = wavread(piston_recording)
-    assert(U(fs) == p.rate)
+    ) where {T <: AbstractFloat, U <: Integer}
 
-    rp = power_spectrum(r[:,1], p, p.block, window=hann)
+    # calibration
+    rp = power_spectrum(r, p, p.block, window=hann)
     rp = mean(rp, 2)
 
-    x, fs = wavread(unknown_recording)
-    assert(U(fs) == p.rate)
+    # recording
     channels = size(x,2)
     info("file channels $channels")
     dbspl = zeros(typeof(x[1,1]), channels)
 
-    s, fs =  wavread(symbol)
-    assert(U(fs) == p.rate)
-    s = mean(s,2)[:,1]
 
     # to use whole symbol, set symbol_l >= symbol_h
     if symbol_l < symbol_h
@@ -121,15 +106,79 @@ function dBSPL_46AN( recording, symbol;
     )
     
     p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
-    dBSPL = cal_dB20uPa(
-        "1000hz-piston-114dBSPL-46AN.wav", 
-        recording, 
-        symbol, 
-        repeat, 
-        symbol_start, 
-        symbol_stop, 
-        p,
+        
+    # calibration 
+    r, fs = wavread("Calibration\\46an_1000hz_114dbspl_201709191531.wav")
+    assert(Int64(fs) == p.rate)
+    
+    # recording
+    x, fs = wavread(recording)
+    assert(Int64(fs) == p.rate)
+    
+    # symbol
+    s, fs =  wavread(symbol)
+    assert(Int64(fs) == p.rate)
+    s = mean(s,2)[:,1]
+
+
+    dBSPL = cal_dB20uPa(r[:,1], x, s, repeat, symbol_start, symbol_stop, p,
         fl = fl,
         fh = fh,
         piston_dbspl = piston_dbspl)    
+end
+
+
+
+
+
+function symbol_group()
+    
+    hz = [71, 90, 112, 141, 179, 224, 280, 355, 450, 560, 710, 900, 1120, 1410, 1790, 2240, 2800, 3550, 4500]
+    t = 3
+    fs = 48000
+      
+    m = Int64(floor(t*fs))
+    n = length(hz)
+    y = ones(m, n)
+    for i = 1:n
+        y[:,i] = sin.(2*π*hz[i]/fs*(0:m-1))
+    end
+    (y, fs)    
+    # test of correlation
+    # x, rate = wavread("AcquaPlay-FreqSweep-Thd-V499-Vol100-Recording.wav")
+    # rxx = xcorr(y[:,1], x[1:7*fs,1])   
+end
+
+
+# single file multiple symbols
+function dBSPL_46AN_SG( recording, sg; 
+    repeat = 1,
+    symbol_start=0,
+    symbol_stop=0,
+    fl = 100, 
+    fh = 12000, 
+    piston_dbspl = 114.0
+    )
+    
+    p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
+    
+    # calibration 
+    r, fs = wavread("Calibration\\46an_1000hz_114dbspl_201709191531.wav")
+    assert(Int64(fs) == p.rate)
+        
+    # recording
+    x, fs = wavread(recording)
+    assert(Int64(fs) == p.rate)
+        
+    # symbols
+    s, fs = sg()
+    assert(Int64(fs) == p.rate)
+
+
+    for i = 1:size(s,2)
+        dBSPL = cal_dB20uPa(r[:,1], x, s[:,i], repeat, symbol_start, symbol_stop, p,
+            fl = fl,
+            fh = fh,
+            piston_dbspl = piston_dbspl)
+    end    
 end
