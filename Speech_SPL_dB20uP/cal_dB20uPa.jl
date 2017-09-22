@@ -52,7 +52,11 @@ function extract_symbol_and_merge(x::Array{T,1}, s::Array{T,1}, rep::U) where {T
 end
 
 
-  
+
+# r : referece calibrator recording
+# x : multi-track to be measured
+# s : symbol signal
+# return dbspl of all channels in x
 function cal_dB20uPa( r::Array{T,1}, x::Array{T,2}, s::Array{T,1}, repeat::U, symbol_l, symbol_h, p::Frame1D{U}; 
 
     fl = 100, 
@@ -121,7 +125,7 @@ function dBSPL_46AN( recording, symbol;
     s = mean(s,2)[:,1]
 
 
-    dBSPL = cal_dB20uPa(r[:,1], x, s, repeat, symbol_start, symbol_stop, p,
+    dbspl = cal_dB20uPa(r[:,1], x, s, repeat, symbol_start, symbol_stop, p,
         fl = fl,
         fh = fh,
         piston_dbspl = piston_dbspl)    
@@ -144,9 +148,6 @@ function symbol_group()
         y[:,i] = sin.(2*π*hz[i]/fs*(0:m-1))
     end
     (y, fs)    
-    # test of correlation
-    # x, rate = wavread("AcquaPlay-FreqSweep-Thd-V499-Vol100-Recording.wav")
-    # rxx = xcorr(y[:,1], x[1:7*fs,1])   
 end
 
 
@@ -169,16 +170,18 @@ function dBSPL_46AN_SG( recording, sg;
     # recording
     x, fs = wavread(recording)
     assert(Int64(fs) == p.rate)
-        
+    
     # symbols
     s, fs = sg()
     assert(Int64(fs) == p.rate)
 
-
+    y = zeros(size(x,2), size(s,2))
     for i = 1:size(s,2)
-        dBSPL = cal_dB20uPa(r[:,1], x, s[:,i], repeat, symbol_start, symbol_stop, p,
+        dbspl = cal_dB20uPa(r[:,1], x, s[:,i], repeat, symbol_start, symbol_stop, p,
             fl = fl,
             fh = fh,
             piston_dbspl = piston_dbspl)
-    end    
+        y[:,i] = dbspl
+    end
+    y
 end
