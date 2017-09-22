@@ -150,6 +150,22 @@ function symbol_group()
     (y, fs)    
 end
 
+function symbol_1khz()
+    
+    hz = [1000]
+    t = 3
+    fs = 48000
+
+    m = Int64(floor(t*fs))
+    n = length(hz)
+    y = ones(m, n)
+    for i = 1:n
+        y[:,i] = sin.(2*π*hz[i]/fs*(0:m-1))
+    end
+    (y, fs)    
+end
+
+
 
 # single file multiple symbols
 function dBSPL_46AN_SG( recording, sg; 
