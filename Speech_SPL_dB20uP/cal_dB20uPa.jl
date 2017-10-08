@@ -106,7 +106,8 @@ function dBSPL_46AN( recording, symbol;
     symbol_stop=10.45,
     fl = 100, 
     fh = 12000, 
-    piston_dbspl = 114.0
+    piston_dbspl = 114.0,
+    weighting = "none"
     )
     
     p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
@@ -123,6 +124,12 @@ function dBSPL_46AN( recording, symbol;
     s, fs =  wavread(symbol)
     assert(Int64(fs) == p.rate)
     s = mean(s,2)[:,1]
+
+    # add support for a-weighting
+    if lowercase(weighting) == "a"
+        x = tf_filter(AWEIGHT_48kHz_BA[:,1], AWEIGHT_48kHz_BA[:,2], x)
+        s = tf_filter(AWEIGHT_48kHz_BA[:,1], AWEIGHT_48kHz_BA[:,2], s)
+    end
 
 
     dbspl = cal_dB20uPa(r[:,1], x, s, repeat, symbol_start, symbol_stop, p,
@@ -174,7 +181,8 @@ function dBSPL_46AN_SG( recording, sg;
     symbol_stop=0,
     fl = 100, 
     fh = 12000, 
-    piston_dbspl = 114.0
+    piston_dbspl = 114.0,
+    weighting = "none"
     )
     
     p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
@@ -191,6 +199,13 @@ function dBSPL_46AN_SG( recording, sg;
     s, fs = sg()
     assert(Int64(fs) == p.rate)
 
+    # add support for a-weighting
+    if lowercase(weighting) == "a"
+        x = tf_filter(AWEIGHT_48kHz_BA[:,1], AWEIGHT_48kHz_BA[:,2], x)
+        s = tf_filter(AWEIGHT_48kHz_BA[:,1], AWEIGHT_48kHz_BA[:,2], s)
+    end
+
+    
     y = zeros(size(x,2), size(s,2))
     for i = 1:size(s,2)
         dbspl = cal_dB20uPa(r[:,1], x, s[:,i], repeat, symbol_start, symbol_stop, p,
