@@ -22,7 +22,59 @@
 #         B[0] + B[1]ζ + B[2]ζ^2 + ... B[m]ζ^m
 # H(ζ) = ---------------------------------------
 #         A[0] + A[1]ζ + A[2]ζ^2 + ... A[n]ζ^n
+using Polynomials
 
 function bilinear(b, a, fs)
+    m = size(b,1)-1
+    n = size(a,1)-1
+    p = Polynomials.Poly{Float64}(0.0)
+    q = Polynomials.Poly{Float64}(0.0)
+    g = (-2*fs)^n
+
+    br = flipdim(b,1)
+    ar = flipdim(a,1)
+
+    for i = m:-1:0
+        p = p + (br[i+1] * ((-2*fs)^i) * poly(ones(i)) * poly(-ones(n-i)))
+    end
+    for i = n:-1:0
+        q = q + (ar[i+1] * ((-2*fs)^i) * poly(ones(i)) * poly(-ones(n-i)))        
+    end
+    p = coeffs(p)
+    q = coeffs(q)
+    g = q[1]
+    return (p/g,q/g)
+end
+
+function convolve(a::Array{T,1}, b::Array{T,1}) where T <: AbstractFloat
+    m = size(a,1)
+    n = size(b,1)
+
+    ar = flipdim(a,1)
+
+    bx = [zeros(T,m-1); b; zeros(T,m-1)]
+    ax = [zeros(T,(n-1)+(m-1)); ar; zeros(T,n-1)]
+    y = zeros(T,m+n-1)
+
+    for i = 1:m+n-1
+        y[i] = dot(bx[i:i+(m+n-2)], ax[(n+1)-i:(m+n-2)+(n+1)-i])
+    end
+    y
+end
+
+# example: create a-weighting filter
+function weighting_a()
     
+    f1 = BigFloat(20.598997)
+    f2 = BigFloat(107.65265)
+    f3 = BigFloat(737.86223)
+    f4 = BigFloat(12194.217)
+    A1000 = BigFloat(1.9997)
+
+    p = [ ((2π*f4)^2) * (10^(A1000/20)), 0, 0, 0, 0 ]
+    q = conv([1, 4π*f4, (2π*f4)^2], [1, 4π*f1, (2π*f1)^2])
+    q = conv(conv(q,[1, 2π*f3]),[1, 2π*f2])
+    
+    println(p)
+    println(q)
 end
