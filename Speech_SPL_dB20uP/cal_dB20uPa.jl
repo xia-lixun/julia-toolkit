@@ -13,7 +13,8 @@ function extract_symbol_and_merge(x::Array{T,1}, s::Array{T,1}, rep::U) where {T
     y = zeros(T, rep * m)
     peaks = zeros(Int64, rep)
 
-    ℝ = xcorr(s, x)                                
+    ℝ = xcorr(s, x)
+    info("peak value: $(maximum(ℝ))")                              
     #display(plot(ℝ))
     𝓡 = sort(ℝ[local_maxima(ℝ)], rev = true)
     isempty(𝓡) && ( return (y, diff(peaks)) )
@@ -99,8 +100,8 @@ end
 
 
 
-
-function dBSPL_46AN( recording, symbol; 
+# reference is like "Calibration\\calib-250hz-105.4dB(A).wav"
+function dBSPL_46AN( recording, symbol, reference; 
     repeat = 3,
     symbol_start=0.25,
     symbol_stop=10.45,
@@ -113,7 +114,7 @@ function dBSPL_46AN( recording, symbol;
     p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
         
     # calibration 
-    r, fs = wavread("Calibration\\46an_1000hz_114dbspl_201709191531.wav")
+    r, fs = wavread(reference)
     assert(Int64(fs) == p.rate)
     
     # recording
@@ -123,15 +124,18 @@ function dBSPL_46AN( recording, symbol;
     # symbol
     s, fs =  wavread(symbol)
     assert(Int64(fs) == p.rate)
-    s = mean(s,2)[:,1]
 
     # add support for a-weighting
     if lowercase(weighting) == "a"
+        info("A-wighting")
+        r = tf_filter(AWEIGHT_48kHz_BA[:,1], AWEIGHT_48kHz_BA[:,2], r)
         x = tf_filter(AWEIGHT_48kHz_BA[:,1], AWEIGHT_48kHz_BA[:,2], x)
         s = tf_filter(AWEIGHT_48kHz_BA[:,1], AWEIGHT_48kHz_BA[:,2], s)
     end
 
 
+    s = mean(s,2)[:,1]
+    #s = s[:,1]
     dbspl = cal_dB20uPa(r[:,1], x, s, repeat, symbol_start, symbol_stop, p,
         fl = fl,
         fh = fh,
@@ -175,7 +179,8 @@ end
 
 
 # single file multiple symbols
-function dBSPL_46AN_SG( recording, sg; 
+# reference is like "Calibration\\46an_1000hz_114dbspl_201709191531.wav"
+function dBSPL_46AN_SG( recording, sg, reference; 
     repeat = 1,
     symbol_start=0,
     symbol_stop=0,
@@ -188,7 +193,7 @@ function dBSPL_46AN_SG( recording, sg;
     p = Frame1D{Int64}(48000, 16384, div(16384,4), 0)
     
     # calibration 
-    r, fs = wavread("Calibration\\46an_1000hz_114dbspl_201709191531.wav")
+    r, fs = wavread(reference)
     assert(Int64(fs) == p.rate)
         
     # recording
@@ -201,6 +206,8 @@ function dBSPL_46AN_SG( recording, sg;
 
     # add support for a-weighting
     if lowercase(weighting) == "a"
+        info("A-wighting")
+        r = tf_filter(AWEIGHT_48kHz_BA[:,1], AWEIGHT_48kHz_BA[:,2], r)
         x = tf_filter(AWEIGHT_48kHz_BA[:,1], AWEIGHT_48kHz_BA[:,2], x)
         s = tf_filter(AWEIGHT_48kHz_BA[:,1], AWEIGHT_48kHz_BA[:,2], s)
     end
