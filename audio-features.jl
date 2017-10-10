@@ -8,7 +8,7 @@ AWEIGHT_16kHz_BA = [0.531489829823557 -1.062979659647115 -0.531489829823556 2.12
 
                     
     
-# transfer function filter
+# transfer function filter in z-domain
 function tf_filter(B, A, x)
     #   y(n)        b(1) + b(2)Z^(-1) + ... + b(M+1)Z^(-M)
     # --------- = ------------------------------------------
