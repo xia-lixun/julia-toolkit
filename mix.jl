@@ -57,6 +57,31 @@ end
 
 
 
+
+
+function resample(path_in, path_out, target_fs)
+
+    a = flist(path_in, t=".wav")
+    n = length(a)
+    u = Array{Int64,1}(n)
+
+    for (i,j) in enumerate(a)
+        run(`ffmpeg -y -i $j D:\\temp.wav`)
+        p = joinpath(path_out, basename(j))
+        run(`sox D:\\temp.wav -r 16000 $p`)
+            
+        x,fs = wavread(p)
+        assert(fs == 16000.0f0)
+        u[i] = size(x,1)
+        
+        info("$i/$n complete")
+    end
+    info("max: $(maximum(u)/16000) seconds")
+    info("min: $(minimum(u)/16000) seconds")
+end
+
+
+
 #generate template JSON file based on folder contents
 function specgen()
     
