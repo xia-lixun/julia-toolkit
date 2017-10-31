@@ -58,7 +58,9 @@ end
 
 
 
-
+# 1. walk through path_in folder for all wav files recursively
+# 2. convert to target fs
+# 3. put result to path_out foler linearly
 function resample(path_in, path_out, target_fs)
 
     a = flist(path_in, t=".wav")
@@ -67,7 +69,9 @@ function resample(path_in, path_out, target_fs)
 
     for (i,j) in enumerate(a)
         run(`ffmpeg -y -i $j D:\\temp.wav`)
-        p = joinpath(path_out, basename(j))
+        p = joinpath(path_out, relpath(dirname(j), path_in))
+        mkpath(p)
+        p = joinpath(p, basename(j))
         run(`sox D:\\temp.wav -r 16000 $p`)
             
         x,fs = wavread(p)
@@ -78,6 +82,7 @@ function resample(path_in, path_out, target_fs)
     end
     info("max: $(maximum(u)/16000) seconds")
     info("min: $(minimum(u)/16000) seconds")
+    rm("D:\\temp.wav", force=true)
 end
 
 
