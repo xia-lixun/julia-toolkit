@@ -15,7 +15,7 @@ function extract_symbol_and_merge(x::Array{T,1}, s::Array{T,1}, rep::U) where {T
 
     ℝ = xcorr(s, x)
     info("peak value: $(maximum(ℝ))")                              
-    #display(plot(ℝ))
+    box = plot(x, size=(800,200))
     𝓡 = sort(ℝ[local_maxima(ℝ)], rev = true)
     isempty(𝓡) && ( return (y, diff(peaks)) )
 
@@ -29,6 +29,14 @@ function extract_symbol_and_merge(x::Array{T,1}, s::Array{T,1}, rep::U) where {T
     y[1:m] = x[lb:rb]
     ip = 1
 
+    #boxing info
+    box_hi = maximum(x[lb:rb])
+    box_lo = minimum(x[lb:rb])
+    plot!(box,[lb,rb],[box_hi, box_hi], color = "red", lw=1)
+    plot!(box,[lb,rb],[box_lo, box_lo], color = "red", lw=1)
+    plot!(box,[lb,lb],[box_hi, box_lo], color = "red", lw=1)
+    plot!(box,[rb,rb],[box_hi, box_lo], color = "red", lw=1)
+
     if rep > 1
         for i = 2:length(𝓡)
             ploc = find(z->z==𝓡[i],ℝ)[1]
@@ -38,7 +46,14 @@ function extract_symbol_and_merge(x::Array{T,1}, s::Array{T,1}, rep::U) where {T
                 info("peak anchor-[$ip] in correlation: $ploc")
                 lb = n - ploc + 1
                 rb = lb + m - 1
-                #display(plot(r[lb:rb]))
+                #boxing info
+                box_hi = maximum(x[lb:rb])
+                box_lo = minimum(x[lb:rb])
+                plot!(box,[lb,rb],[box_hi, box_hi], color = "red", lw=1)
+                plot!(box,[lb,rb],[box_lo, box_lo], color = "red", lw=1)
+                plot!(box,[lb,lb],[box_hi, box_lo], color = "red", lw=1)
+                plot!(box,[rb,rb],[box_hi, box_lo], color = "red", lw=1)
+                
                 y[1+(ip-1)*m : ip*m] = x[lb:rb]
                 if ip == rep
                     break
@@ -48,7 +63,7 @@ function extract_symbol_and_merge(x::Array{T,1}, s::Array{T,1}, rep::U) where {T
         peaks = sort(peaks)
         #info("diff of peak locations: $(diff(peaks)./ρ.rate) seconds")
     end
-    #display(plot(y))
+    display(box)
     (y, diff(peaks))
 end
 
