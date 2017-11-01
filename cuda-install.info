@@ -1,0 +1,44 @@
+How to install cuda-9 the easy way:
+
+1. system = ubuntu 17.10
+2. sudo add-apt-repository ppa:graphics-drivers/ppa
+   sudo apt update
+3. sudo apt install nvidia-384 nvidia-384-dev
+   nvidia-smi:
+    +-----------------------------------------------------------------------------+
+    | NVIDIA-SMI 384.90                 Driver Version: 384.90                    |
+    |                                                                             |
+    |-------------------------------+----------------------+----------------------+
+    |   0  Quadro M500M        Off  | 00000000:06:00.0 Off |                  N/A |
+    | N/A   48C    P0    N/A /  N/A |    943MiB /  2002MiB |     26%      Default |
+    +-------------------------------+----------------------+----------------------+
+4. sudo apt install g++ freeglut3-dev build-essential libx11-dev libxmu-dev libxi-dev libglu1-mesa libglu1-mesa-dev
+   gcc --version = 7.2
+   cuda-9 requires gcc-6, so:
+   sudo apt install gcc-6
+   sudo apt install g++-6
+
+5. wget https://developer.nvidia.com/compute/cuda/9.0/Prod/local_installers/cuda_9.0.176_384.81_linux-run
+6. chmod +x cuda_9.0.176_384.81_linux.run 
+   sudo ./cuda_9.0.176_384.81_linux.run
+
+7. You are attempting to install on an unsupported configuration. Do you wish to continue?
+y
+Install NVIDIA Accelerated Graphics Driver for Linux-x86_64 384.81?
+n
+Install the CUDA 9.0 Toolkit?
+y
+Enter Toolkit Location
+[default location]
+Do you want to install a symbolic link at /usr/local/cuda?
+y
+Install the CUDA 9.0 Samples?
+y
+Enter CUDA Samples Location
+[default location]
+
+8. sudo ln -s /usr/bin/gcc-6 /usr/local/cuda-9.0/bin/gcc
+   sudo ln -s /usr/bin/g++-6 /usr/local/cuda-9.0/bin/g++
+
+9. cd ~/NVIDIA_CUDA-9.0_Samples/
+   make
