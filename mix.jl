@@ -4,6 +4,7 @@
 using SHA
 using WAV
 using JSON
+include("audio-features.jl")
 
 
 
@@ -103,7 +104,9 @@ function specgen()
         "noise_rootpath" => "D:\\NoiseBox\\104Nonspeech-16k",
         "build_speechlevel_index" => "true",
         "build_noiselevel_index" => "true",
-        "noise_categories" => x
+        "noise_categories" => x,
+
+        "feature" => Dict("frame_size"=>"512","step_size"=>"128","window_function"=>"hamming","frame_radius"=>"6","frame_noisest"=>"7")
         )
     for i in flist(a["noise_rootpath"])
         push!(x, Dict("name"=>i,"type"=>"stationary|nonstationary|impulsive","percent"=>"0.0"))
@@ -200,7 +203,7 @@ function mix(specification)
             info("noise checksum ok")
         end
     end
-    #index format: path-to-wav-file, peak-level, rms-level, median, length-in-samples, filename-uid
+    #index format: path-to-wav-file, peak-level, rms-level, median, length-in-samples
     ni = Dict( x["name"] => readdlm(joinpath(s["noise_rootpath"], x["name"],"index.level"), ',') for x in s["noise_categories"])
 
 
@@ -214,7 +217,7 @@ function mix(specification)
         !checksha256(s["speech_rootpath"]) && error("speech data checksum error")
         info("speech checksum ok")
     end
-    #index format: path-to-wav-file, peak-level, speech-level(dB), length-in-samples, filename-uid
+    #index format: path-to-wav-file, peak-level, speech-level(dB), length-in-samples
     si = readdlm(joinpath(s["speech_rootpath"],"index.level"), ',', header=false, skipstart=3)
     #(si, ni)
 
@@ -287,7 +290,7 @@ function mix(specification)
                 rd = rand(1:q-p)
                 u[rd:rd+p-1] += x
                 # clipping sample if over-range?
-                path = joinpath(mo,"$(nid)+$(sid)+$(sp)+$(sn).wav")
+                path = joinpath(mo,"$(nid)+$(sid)+1+$(sp)+$(sn).wav")
                 wavwrite(u, path, Fs=fs)
                 label[path] = [(rd, rd+p-1)]
 
@@ -300,7 +303,7 @@ function mix(specification)
                     η < mr[1] && (np += 1)
                     η = (np*p)/(nq*q)                    
                 end
-                path = joinpath(mo,"$(nid)+$(sid)+$(sp)+$(sn).wav")
+                path = joinpath(mo,"$(nid)+$(sid)+$(nq)+$(sp)+$(sn).wav")
                 stamp = Array{Tuple{Int64, Int64},1}()
 
                 u = repeat(u, outer=nq)
@@ -320,4 +323,48 @@ function mix(specification)
         write(f, JSON.json(label))
     end
     info("label written to $(joinpath(mo,"label.json"))")
+end
+
+
+
+function feature(specification)
+    # read the specification for feature extraction
+    s = JSON.parsefile(specification)          
+    fs = parse(Int64,s["samplerate"])          #16000
+    n = parse(Int64,s["samplespace"])          #17    
+    mo = s["mixoutput"]
+
+    # clean level info
+    si = readdlm(joinpath(s["speech_rootpath"],"index.level"), ',', header=false, skipstart=3)
+    si = Dict(si[i,1] => si[i,2:end] for i = 1:size(si,1))
+    
+    # read all mixed
+    a = flist(mo, t=".wav")
+    for i in a
+        p = split(i[1:end-length(".wav")],"+")
+        #[1]"impulsive"
+        #[2]"n48"      
+        #[3]"dr1"      
+        #[4]"mklw0"    
+        #[5]"sa1"
+        #[6]"3"      
+        #[7]"-22.0"    
+        #[8]"20.0"
+        ref = joinpath(s["speech_rootpath"],p[3],p[4],p[5]) * ".wav"
+        dup = parse(Int64,p[6])
+        tagspl = parse(Float64,p[7])
+        refspl = si[ref][2]
+        refpk = si[ref][1]
+
+        x = wavread(i)[1][:,1]
+        r = wavread(ref)[1][:,1]
+
+        g = 10^((tagspl-refspl)/20)
+        g * refpk > 1 && (g = 1 / refpk; info("relax gain to avoid clipping $(refpk):$(refspl)->$(tagspl)(dB)"))
+        r *= g #level speech to target level
+
+        wavwrite([x r], i*"label",Fs=fs)
+
+        
+    end
 end
