@@ -94,18 +94,19 @@ function specgen()
     a = Dict(
         "samplerate" => "16000",
         "samplespace"=>"17",
-        "mixsnr" => ["-20", "-10", "0", "10", "20"],
+        "mixsnr" => ["20", "15", "10", "5", "0", "-5"],
         "speechlevel" => ["-22", "-32", "-42"],
+        "mixbase" => "speech",
         "mixrange" => ["0.1", "0.6"],
-        "mixoutput" => "D:\\mix-utility\\Mixed",
-        "speech_rootpath" => "D:\\mix-utility\\VoiceBox\\16k-LP7",
-        "noise_rootpath" => "D:\\mix-utility\\NoiseSet",
+        "mixoutput" => "D:\\mix-utility\\mixed",
+        "speech_rootpath" => "D:\\VoiceBox\\TIMIT-16k\\train",
+        "noise_rootpath" => "D:\\NoiseBox\\104Nonspeech-16k",
         "build_speechlevel_index" => "true",
         "build_noiselevel_index" => "true",
         "noise_categories" => x
         )
     for i in flist(a["noise_rootpath"])
-        push!(x, Dict("name"=>i,"type"=>"stationary|nonstationary|impulse","percent"=>"0.0"))
+        push!(x, Dict("name"=>i,"type"=>"stationary|nonstationary|impulsive","percent"=>"0.0"))
     end
 
     rm(a["mixoutput"], force=true, recursive=true)
@@ -181,9 +182,9 @@ function mix(specification)
     n = parse(Int64,s["samplespace"])          #17
     snr = parse.(Float64,s["mixsnr"])          #[-20.0, -10.0, 0.0, 10.0, 20.0]
     spl = parse.(Float64,s["speechlevel"])     #[-22.0, -32.0, -42.0]
+
     mr = parse.(Float64,s["mixrange"])         #[0.1, 0.6]
     mo = s["mixoutput"]
-    m = length(s["noise_rootpath"])
 
 
     #Part I. Noise treatment
@@ -200,7 +201,7 @@ function mix(specification)
         end
     end
     #index format: path-to-wav-file, peak-level, rms-level, median, length-in-samples, filename-uid
-    ni = Dict( x["name"] => readdlm(joinpath(s["noise_rootpath"], x["name"],"index.level"),',') for x in s["noise_categories"])
+    ni = Dict( x["name"] => readdlm(joinpath(s["noise_rootpath"], x["name"],"index.level"), ',') for x in s["noise_categories"])
 
 
     #Part II. Speech treatment
@@ -214,11 +215,12 @@ function mix(specification)
         info("speech checksum ok")
     end
     #index format: path-to-wav-file, peak-level, speech-level(dB), length-in-samples, filename-uid
-    si = readdlm(joinpath(s["speech_rootpath"],"index.level"))
+    si = readdlm(joinpath(s["speech_rootpath"],"index.level"), ',', header=false, skipstart=3)
     #(si, ni)
 
 
     # Part III. Mixing them up
+    label = Dict{String, Array{Tuple{Int64, Int64},1}}()
     srand(1234)
     for i in s["noise_categories"]
         for j = 1:Int64(round(parse(Float64, i["percent"]) * 0.01 * n)) # items in each noise category
@@ -232,7 +234,7 @@ function mix(specification)
             # 3.1: random speech, in x[:,1]
             x = Array{Float64,1}()
             try
-                x = wavread(joinpath(s["speech_rootpath"],si[rs,1]))[1][:,1]
+                x = wavread(si[rs,1])[1][:,1]
             catch
                 #todo: test if my wav class could handle the corner cases of WAV.jl
                 #todo: wrap my wav class with c routines to wav.dll, then wrap with julia
@@ -249,7 +251,7 @@ function mix(specification)
             catch
                 #todo: test if my wav class could handle the corner cases of WAV.jl
                 #todo: wrap my wav class with c routines to wav.dll, then wrap with julia
-                warn("missing $(si[rn,1])")
+                warn("missing $(ni[i["name"]][rn,1])")
             end
 
             #3.3: random snr, calculate noise level based on speech level and snr
@@ -267,47 +269,55 @@ function mix(specification)
             u *= g
             
             #3.4: portion check
-            nfid = replace(ni[i["name"]][rn,1][m+1:end-length(".wav")], "\\", "+")
-
+            nid = replace(relpath(ni[i["name"]][rn,1],s["noise_rootpath"]), "\\", "+")[1:end-4]
+            sid = replace(relpath(si[rs,1],s["speech_rootpath"]), "\\", "+")[1:end-4]
+            
             p = si[rs,4]
             q = ni[i["name"]][rn,5]
+            if lowercase(s["mixbase"]) == "speech" 
+                (x, u) = (u, x)
+                p = ni[i["name"]][rn,5]
+                q = si[rs,4]
+            end
             η = p/q
-            if mr[2] >= η >= mr[1]
+            # x,p is the shorter signal
+            # u,q is the longer signal
+
+            if mr[1] <= η <= mr[2]
                 rd = rand(1:q-p)
                 u[rd:rd+p-1] += x
                 # clipping sample if over-range?
-                # ni[i["name"]][rn,6] #noise file name
-                # si[rs,5]            #speech file name
-                # sp                  #speech level
-                # snr[rr]             #snr
-                path = joinpath(mo,"$(nfid)+$(si[rs,5])+$(sp)+$(sn)+$(rd)+$(rd+p-1)+")
-                wavwrite(u, path*".wav", Fs=fs)
-                info("η = $η")
+                path = joinpath(mo,"$(nid)+$(sid)+$(sp)+$(sn).wav")
+                wavwrite(u, path, Fs=fs)
+                label[path] = [(rd, rd+p-1)]
 
-            elseif η > mr[2]
-                m = Int64(floor(q*mr[2]))
-                rd = rand(1:q-m)
-                u[rd:rd+m-1] += x[1:m]
-                path = joinpath(mo,"$(nfid)+$(si[rs,5])+$(sp)+$(sn)+$(rd)+$(rd+m-1)+")
-                wavwrite(u, path*".wav", Fs=fs)
-                info("η > $(mr[2])")
-
-            elseif η < mr[1]
-                m = Int64(ceil(q*mr[1]/p))
-                rd = Dict{Int64,Int64}()
-                rd[0] = -p + 1
-                path = joinpath(mo,"$(nfid)+$si[rs,5]+$(sp)+$(sn)+")
-                for k = 1:m
-                    rd[k] = rand( rd[k-1]+p : q-(m-(k-1))*p )
-                    u[rd[k] : rd[k]+p-1] += x
-                    path *= "$(rd[k])+$(rd[k]+p-1)+"
+            # η > mr[2] or η < mr[1]    
+            else 
+                np = 1
+                nq = 1
+                while !(mr[1] <= η <= mr[2])
+                    η > mr[2] && (nq += 1)
+                    η < mr[1] && (np += 1)
+                    η = (np*p)/(nq*q)                    
                 end
-                # rd[1] = rand(1:q-m*p)
-                # rd[2] = rand(rd[1]+p:q-(m-1)*p)
-                # rd[3] = rand(rd[2]+p:q-(m-2)*p)
-                info("η < $(mr[1])")
-                wavwrite(u, path*".wav", Fs=fs)
+                path = joinpath(mo,"$(nid)+$(sid)+$(sp)+$(sn).wav")
+                stamp = Array{Tuple{Int64, Int64},1}()
+
+                u = repeat(u, outer=nq)
+                pp = Int64(floor((nq*q)/np)) 
+                for k = 0:np-1
+                    rd = k*pp+rand(1:pp-p)
+                    u[rd:rd+p-1] += x
+                    push!(stamp,(rd, rd+p-1))
+                end
+                wavwrite(u, path, Fs=fs)
+                label[path] = stamp
             end
+            info("η = $η")
         end
     end
+    open(joinpath(mo,"label.json"),"w") do f
+        write(f, JSON.json(label))
+    end
+    info("label written to $(joinpath(mo,"label.json"))")
 end
