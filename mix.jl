@@ -4,6 +4,7 @@
 using SHA
 using WAV
 using JSON
+using HDF5
 include("audio-features.jl")
 
 
@@ -106,14 +107,14 @@ function specgen()
         "build_noiselevel_index" => "true",
         "noise_categories" => x,
 
-        "feature" => Dict("frame_size"=>"512","step_size"=>"128","window_function"=>"hamming","frame_radius"=>"6","frame_noisest"=>"7")
+        "feature" => Dict("frame_size"=>"512","step_size"=>"128","window_function"=>"Hamming","frame_radius"=>"6","frame_noisest"=>"7")
         )
     for i in flist(a["noise_rootpath"])
         push!(x, Dict("name"=>i,"type"=>"stationary|nonstationary|impulsive","percent"=>"0.0"))
     end
 
-    rm(a["mixoutput"], force=true, recursive=true)
-    mkpath(a["mixoutput"])
+    #rm(a["mixoutput"], force=true, recursive=true)
+    !isdir(a["mixoutput"]) && mkpath(a["mixoutput"])
     open(joinpath(a["mixoutput"],"specification-$(replace(replace("$(now())",":","-"),".","-")).json"),"w") do f
         write(f, JSON.json(a))
     end
@@ -188,7 +189,10 @@ function mix(specification)
 
     mr = parse.(Float64,s["mixrange"])         #[0.1, 0.6]
     mo = s["mixoutput"]
-
+    clean = flist(mo, t=".wav")
+    for i in clean
+        rm(i, force=true)
+    end
 
     #Part I. Noise treatment
     !isdir(s["noise_rootpath"]) && error("noise root path doesn't exist")
@@ -326,7 +330,7 @@ function mix(specification)
 end
 
 
-
+# remove old feature.h5 and make new
 function feature(specification)
     # read the specification for feature extraction
     s = JSON.parsefile(specification)          
@@ -338,9 +342,17 @@ function feature(specification)
     si = readdlm(joinpath(s["speech_rootpath"],"index.level"), ',', header=false, skipstart=3)
     si = Dict(si[i,1] => si[i,2:end] for i = 1:size(si,1))
     
+    # feature info
+    m = parse(Int64, s["feature"]["frame_size"])
+    d = parse(Int64, s["feature"]["step_size"])
+    param = Frame1D{Int64}(fs, m, d, 0)
+    win = Dict("Hamming"=>hamming, "Hann"=>hann)
+
     # read all mixed
     a = flist(mo, t=".wav")
-    for i in a
+    ptz = -1
+    for (j,i) in enumerate(a)
+        rm(i[1:end-length(".wav")]*".h5", force=true)
         p = split(i[1:end-length(".wav")],"+")
         #[1]"impulsive"
         #[2]"n48"      
@@ -361,10 +373,97 @@ function feature(specification)
 
         g = 10^((tagspl-refspl)/20)
         g * refpk > 1 && (g = 1 / refpk; info("relax gain to avoid clipping $(refpk):$(refspl)->$(tagspl)(dB)"))
-        r *= g #level speech to target level
-
-        wavwrite([x r], i*"label",Fs=fs)
-
+        r = g * repeat(r, outer=dup) #level speech to target level
         
+        #wavwrite([x r], i*"label",Fs=fs)
+        pxx = power_spectrum(x, param, m, window=win[s["feature"]["window_function"]])
+        prr = power_spectrum(r, param, m, window=win[s["feature"]["window_function"]])
+
+        h5write(i[1:end-length(".wav")]*".h5", "noisy", transpose(log.(pxx.+eps())))
+        h5write(i[1:end-length(".wav")]*".h5", "clean", transpose(log.(prr.+eps())))
+        #??? x 257 matrix
+
+        pt = Int64(round((j/length(a))*100))
+        in(pt, 0:10:100) && (pt != ptz) && (ptz = pt; println("%$pt"))
     end
+    info("feature done.")
+end
+
+
+# global variance:
+# remove old global.h5 and make new
+function gv(specification)
+    # read the specification for feature extraction
+    s = JSON.parsefile(specification)          
+    fs = parse(Int64,s["samplerate"])          #16000
+    mo = s["mixoutput"]
+    m2 = div(parse(Int64, s["feature"]["frame_size"]), 2) + 1 # m2 = 257
+    n = zero(Int128) #global frames
+    rm(joinpath(mo,"global.h5"), force=true)
+
+    a = flist(mo, t=".h5")
+    la = length(a)
+
+    # get global frame count
+    ptz = -1
+    for (j,i) in enumerate(a)
+        x = h5read(i, "noisy") #(frames x m2) matrix
+        n += size(x,1)            
+        pt = Int64(round(100 * (j/la)))
+        in(pt, 0:10:100) && (pt != ptz) && (ptz = pt; print("."))
+    end
+    info("global spectrum count: $n")
+
+    # get global mean log power spectrum
+    μx = zeros(Float64, m2)
+    μr = zeros(Float64, m2)
+    μxi = zeros(BigFloat, la, m2)
+    μri = zeros(BigFloat, la, m2)
+
+    ptz = -1
+    for(j,i) in enumerate(a)
+        x = h5read(i, "noisy") #(frames x m2) matrix
+        r = h5read(i, "clean")
+        for k = 1:m2
+            μxi[j,k] = sum_kbn(x[:,k])
+            μri[j,k] = sum_kbn(r[:,k])
+        end
+        pt = Int64(round(100 * (j/la)))        
+        in(pt, 0:10:100) && (pt != ptz) && (ptz = pt; print("."))        
+    end
+    for k = 1:m2
+        μx[k] = Float64(sum_kbn(μxi[:,k])/n)
+        μr[k] = Float64(sum_kbn(μri[:,k])/n)
+    end
+    info("global spectrum mean (dimentionless): noise=$(mean(μx)), clean=$(mean(μr))")
+
+    # get global std for unit variance
+    σx = zeros(Float64, m2)
+    σr = zeros(Float64, m2)
+    fill!(μxi, zero(BigFloat))
+    fill!(μri, zero(BigFloat))
+    ptz = -1
+    for(j,i) in enumerate(a)
+        x = h5read(i, "noisy") #(frames x m2) matrix
+        r = h5read(i, "clean")
+        for k = 1:m2
+            μxi[j,k] = sum_kbn((x[:,k]-μx[k]).^2)
+            μri[j,k] = sum_kbn((r[:,k]-μr[k]).^2)
+        end
+        pt = Int64(round(100 * (j/la)))        
+        in(pt, 0:10:100) && (pt != ptz) && (ptz = pt; print("."))        
+    end
+    for k = 1:m2
+        σx[k] = Float64(sqrt(sum_kbn(μxi[:,k])/(n-1)))
+        σr[k] = Float64(sqrt(sum_kbn(μri[:,k])/(n-1)))
+    end
+    info("global spectrum std (dimentionless): noise=$(mean(σx)), clean=$(mean(σr))")
+
+    h5write(joinpath(mo,"global.h5"), "noisy_mu", μx)
+    h5write(joinpath(mo,"global.h5"), "clean_mu", μr)
+    h5write(joinpath(mo,"global.h5"), "noisy_std", σx)
+    h5write(joinpath(mo,"global.h5"), "clean_std", σr)
+    h5write(joinpath(mo,"global.h5"), "frames", Int64(n))
+    assert(n < typemax(Int64))
+    info("global results written to global.h5")
 end
