@@ -338,6 +338,11 @@ function feature(specification)
     n = parse(Int64,s["samplespace"])          #17    
     mo = s["mixoutput"]
 
+    clean = flist(mo, t=".h5")
+    for i in clean
+        rm(i, force=true)
+    end
+
     # clean level info
     si = readdlm(joinpath(s["speech_rootpath"],"index.level"), ',', header=false, skipstart=3)
     si = Dict(si[i,1] => si[i,2:end] for i = 1:size(si,1))
@@ -352,7 +357,7 @@ function feature(specification)
     a = flist(mo, t=".wav")
     ptz = -1
     for (j,i) in enumerate(a)
-        rm(i[1:end-length(".wav")]*".h5", force=true)
+        
         p = split(i[1:end-length(".wav")],"+")
         #[1]"impulsive"
         #[2]"n48"      
