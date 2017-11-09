@@ -48,7 +48,7 @@ end
 
 
 # x: Array{Array{T,1},1} for best performance
-function backprop!(nn::net{T}, x, y) where T <: AbstractFloat
+function backprop!(nn::net{T}, x::Array{T,1}, y::Array{T,1}) where T <: AbstractFloat
 
     L = nn.L
 
@@ -61,7 +61,8 @@ function backprop!(nn::net{T}, x, y) where T <: AbstractFloat
     # nn.a, nn.z
 
     # output error ∇aC ⦿ σ'(z[L])
-    nn.δ[L] .= ∂C∂a.(nn.a[L], y) .* sigmoid_prime.(nn.z[L])
+    #nn.δ[L] .= ∂C∂a.(nn.a[L], y) .* sigmoid_prime.(nn.z[L])  # quadratic cost
+    nn.δ[L] .= ∂C∂a.(nn.a[L], y)                              # cross entropy cost
     nn.∂C∂b[L] .= nn.δ[L]
     ∂C∂w!(nn.∂C∂w[L], nn.a[L-1], nn.δ[L])
    
@@ -77,8 +78,10 @@ function backprop!(nn::net{T}, x, y) where T <: AbstractFloat
 end    
 
 
-
-function update_minibatch(nn::net{T}, minibatch::Array{Tuple{Array{T,1},Array{T,1}},1}, η) where T <: AbstractFloat
+# η: learning rate, i.e. the scaling factor applied to the gradient ∂C/∂w and ∂C/∂b
+# λ: regulatization factor for weight decaying
+# n: total size of the training data set
+function update_minibatch(nn::net{T}, minibatch::Array{Tuple{Array{T,1},Array{T,1}},1}, η::T, λ::T, n::Int64) where T <: AbstractFloat
     
     for i in nn.∇w
         fill!(i, zero(T))
@@ -96,101 +99,94 @@ function update_minibatch(nn::net{T}, minibatch::Array{Tuple{Array{T,1},Array{T,
         end
     end
     m = length(minibatch)
-    nn.w .-= ((η/m) .* nn.∇w)
+    α = one(T) - λ * η / n
+    β = η / m
+    nn.w .= α .* nn.w .- β .* nn.∇w
     nn.b .-= ((η/m) .* nn.∇b)
 end
 
 
-function evaluate(nn::net{T}, x) where T <: AbstractFloat
-    # feedforward
+function feedforward(nn::net{T}, x::Array{T,1}) where T <: AbstractFloat
     nn.a[1] = x
     for i = 2 : nn.L
-        nn.z[i] .= (nn.w[i] * nn.a[i-1]) .+ nn.b[i]
-        nn.a[i] .= sigmoid.(nn.z[i])
+        nn.a[i] .= sigmoid.((nn.w[i] * nn.a[i-1]) .+ nn.b[i])
     end
     nn.a[nn.L]
 end
 
 
-f(x,y) = (sin(x+y)+1)/2
+# x=7 ∈ {0,1,...9} -> [0,0,0,0,0,0,0,1,0,0]
+function onehot(T::DataType, n::Int64, x::Int64)
+    v = zeros(T,n)
+    v[x+1] = T(1)
+    v
+end
+
+function accu(nn::net{T}, batch::Array{Tuple{Array{T,1},Int64},1}) where T <: AbstractFloat
+    correct = 0
+    for (i,j) in batch
+        val, index = findmax(feedforward(nn, i))
+        (index-1) == j && (correct += 1)
+    end
+    a = correct / length(batch)
+    a
+end
+
+function totalcost(nn::net{T}, batch::Array{Tuple{Array{T,1},Array{T,1}},1}, λ::T) where T <: AbstractFloat
+    
+    n = length(batch)
+    Σcost = zero(T)
+
+    for (x,y) in batch
+        a = feedforward(nn, x)
+        Σcost += cost(a,y)/n
+    end
+
+    Σw2 = zero(T)
+    for i = 2 : nn.L
+        Σw2 += sum(nn.w[i].^2)
+    end
+    Σcost += (Σw2 * λ / 2n)
+    Σcost
+end
+
+
+
+
+
 function simple()
-    nn = net{Float64}([2,16,16,1])
-    epoch = 500
+    
+    train_x = h5read("D:\\Git\\julia-toolkit\\dnn\\mnist.h5", "mnist/train_image")  #Float32 784 x 50000
+    train_l = h5read("D:\\Git\\julia-toolkit\\dnn\\mnist.h5", "mnist/train_label")  #Int64 1 x 50000
 
+    valid_x = h5read("D:\\Git\\julia-toolkit\\dnn\\mnist.h5", "mnist/test_image")  #Float32 784 x 10000
+    valid_l = h5read("D:\\Git\\julia-toolkit\\dnn\\mnist.h5", "mnist/test_label")  #Int64 1 x 10000
+
+    batch_valid = [(valid_x[:,i], valid_l[i]) for i = 1:length(valid_l)]
+    batch_valid4cost = [(valid_x[:,i], onehot(Float32,10,valid_l[i])) for i = 1:length(valid_l)]
+
+
+    nn = net{Float32}([784,100,10])
+    epoch = 30
+    η = 0.5f0
+    λ = 5.0f0
+    minibatchsize = 10
+    minibatches = div(length(train_l), minibatchsize)
+    
     for i = 1:epoch
-        x = rand(1000)
-        y = rand(1000)
-        z = f.(x,y)
-        minibatch = [([x[j], y[j]], [z[j]]) for j = 1:1000]
-        update_minibatch(nn, minibatch, 0.001)
-        info(nn.w[2][4])
+
+        rng = MersenneTwister(i)
+        batch_train = shuffle!(rng, [(train_x[:,i], onehot(Float32,10,train_l[i])) for i = 1:length(train_l)])
+
+        for j = 0:minibatches-1
+            update_minibatch(nn, batch_train[j*minibatchsize+1:(j+1)*minibatchsize], η, λ, length(train_l))
+        end
+        p1 = accu(nn, batch_valid)
+        p2 = totalcost(nn, batch_train, λ)
+        p3 = totalcost(nn, batch_valid4cost, λ)
+        info("$p1    $p2    $p3")
     end
-    evaluate(nn, [0.3, 0.6])
 end
-
-
-
-
-# example net([2,3,2,3])
-function backprop(x, y)
-
-    # neron-net specification
-    # input layer is not included in the net
-    #a = Dict{Int64, Array{Float64,1}}(1=>zeros(3), 2=>zeros(2), 3=>zeros(3))
-    a = [zeros(x) for x in layers]
-    z = deepcopy(a)
-    δ = deepcopy(a)
-
-    w = Dict{Int64, Array{Float64,2}}()
-    b = Dict{Int64, Array{Float64,1}}()
-    L = length(layers)
-
-    w[1] = randn(length(a[2]), length(a[1]))
-    for i = 2:L
-        w[i] = randn(length(a[i]), length(a[i-1]))
-    end
-    for i = 1:L
-        b[i] = randn(length(a[i]))
-    end
-
-    ∂C∂b = deepcopy(b)
-    ∂C∂w = deepcopy(w)
-
-
-    # 1. feedforward
-    a[0] = view(x, :, 1)
-    for i = 1:L    
-        z[i] .= (w[i]*a[i-1]) .+ b[i]
-        a[i] .= sigmoid.(z[i])
-    end
-    #a,z
-
-    # 2. output error ∇aC ⦿ σ'(z[L])
-    δ[L] .= ∂C∂a.(a[L], y) .* sigmoid_prime.(z[L])
-    ∂C∂b[L] .= δ[L]
-    #for k = 1:size(w[L],2)
-    #    for j = 1:size(w[L],1)
-    #        ∂C∂w[L][j,k] = a[L-1][k] * δ[L][j]
-    #    end
-    #end
-    ∂C∂w!(∂C∂w[L], a[L-1], δ[L])
-
-    # 3. for each l = L-1, L-2 ... 1 compute δ[l] = (transpose(w[l+1])δ[l+1]) ⦿ σ'(z[l])
-    #    ∂C/∂w[l][j,k] = a[l-1][k] * δ[l][j]
-    #    ∂C/∂b[l][j] = δ[l][j]
-    for l = L-1:-1:1
-        δ[l] .= (transpose(w[l+1]) * δ[l+1]) .* sigmoid_prime.(z[l])
-        ∂C∂b[l] .= δ[l]
-        #for k = 1:size(w[l],2)
-        #    for j = 1:size(w[l],1)
-        #        ∂C∂w[l][j,k] = a[l-1][k] * δ[l][j]
-        #    end
-        #end
-        ∂C∂w!(∂C∂w[l], a[l-1], δ[l])    
-    end
-    ∂C∂w, ∂C∂b
-end
-
 
 
 
@@ -198,6 +194,10 @@ sigmoid(x) = 1.0 / (1.0 + exp(-x))
 sigmoid_prime(x) = sigmoid(x) * (1.0 - sigmoid(x))
 
 # ∂C/∂a for output activations
+#return sum(nan_to_num(-y*log(a)-(1-y)*log(1-a)))
+nan2num(x) = isnan(x) ? zero(typeof(x)) : x
+cost(a::Array{T,1}, y::Array{T,1}) where T <: AbstractFloat = sum(nan2num.(-y.*log.(a) .- (one(T).-y).*log.(one(T).-a)))
+
 ∂C∂a(a, y) = a - y
 
 function ∂C∂w!(∂C∂w, a, δ)
