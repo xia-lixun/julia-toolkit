@@ -156,11 +156,11 @@ end
 
 function simple()
     
-    train_x = h5read("D:\\Git\\julia-toolkit\\dnn\\mnist.h5", "mnist/train_image")  #Float32 784 x 50000
-    train_l = h5read("D:\\Git\\julia-toolkit\\dnn\\mnist.h5", "mnist/train_label")  #Int64 1 x 50000
+    train_x = h5read("dnn/mnist.h5", "mnist/train_image")  #Float32 784 x 50000
+    train_l = h5read("dnn/mnist.h5", "mnist/train_label")  #Int64 1 x 50000
 
-    valid_x = h5read("D:\\Git\\julia-toolkit\\dnn\\mnist.h5", "mnist/test_image")  #Float32 784 x 10000
-    valid_l = h5read("D:\\Git\\julia-toolkit\\dnn\\mnist.h5", "mnist/test_label")  #Int64 1 x 10000
+    valid_x = h5read("dnn/mnist.h5", "mnist/test_image")  #Float32 784 x 10000
+    valid_l = h5read("dnn/mnist.h5", "mnist/test_label")  #Int64 1 x 10000
 
     batch_valid = [(valid_x[:,i], valid_l[i]) for i = 1:length(valid_l)]
     batch_valid4cost = [(valid_x[:,i], onehot(Float32,10,valid_l[i])) for i = 1:length(valid_l)]
